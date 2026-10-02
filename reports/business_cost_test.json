@@ -1,0 +1,7 @@
+{
+  "flag_nobody": 112200.0,
+  "flag_everybody": 51750.0,
+  "model_at_0.5": 62150.0,
+  "model_at_cost_opt": 32950.0,
+  "baseline_at_cost_opt": 30700.0
+}
