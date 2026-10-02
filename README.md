@@ -13,7 +13,8 @@ A telecom retention team can offer a discount to at-risk customers but cannot co
 These two numbers are assumptions (configurable in `src/config.py`), not facts from the dataset; §5 shows how sensitive the result is to them.
 
 ## 2. Dataset
-- **Source:** IBM Telco Customer Churn sample dataset — [Kaggle](https://www.kaggle.com/datasets/blastchar/telco-customer-churn) (also mirrored in [IBM/telco-customer-churn-on-icp4d](https://github.com/IBM/telco-customer-churn-on-icp4d)). Check the licence on the Kaggle page before reuse.
+- **Source:** IBM Telco Customer Churn sample dataset (a fictional telecom company, published by IBM as a sample dataset) — [Kaggle](https://www.kaggle.com/datasets/blastchar/telco-customer-churn) (also mirrored in [IBM/telco-customer-churn-on-icp4d](https://github.com/IBM/telco-customer-churn-on-icp4d)).
+- **Licence / usage:** Kaggle lists the data as "Data files © Original Authors", i.e. no open-source licence is granted. It is used here for an educational internship project only, and **the data is not redistributed** in this repository (gitignored; download it yourself, see below).
 - **Size / target balance:** 7,043 customers × 20 features, **26.5% churn**. Stratified split 60/20/20 → 4,225 train / 1,409 val / 1,409 test (seed 42).
 - **How to get it:** download from Kaggle and save the CSV as `data/raw/WA_Fn-UseC_-Telco-Customer-Churn.csv` (the filename `src/config.py` expects). Data is not committed (gitignored).
 
@@ -96,7 +97,8 @@ The model never takes action. It produces a ranked list and a flag for a retenti
 ```bash
 uv venv --python 3.12
 source .venv/bin/activate
-uv pip install -r requirements.txt
+uv pip install -r requirements.txt   # direct dependencies pinned to the versions used for the reported results
+# (requirements.lock = full transitive freeze from macOS arm64, Python 3.12: uv pip install -r requirements.lock)
 # put the dataset in data/raw/ (see §2), then:
 python -m src.train        # CV comparison, tuning, threshold, test eval -> models/, reports/
 python -m src.explain      # SHAP + error analysis
