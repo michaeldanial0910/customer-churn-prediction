@@ -1,0 +1,12 @@
+{
+  "customers": 7043,
+  "churners": 1869,
+  "churn_rate": 0.2653698707936959,
+  "monthly_revenue_all": 456116.6,
+  "monthly_revenue_of_churners": 139130.85,
+  "share_of_monthly_revenue_churned": 0.3050335155528214,
+  "avg_monthly_charge_churners": 74.44133226324237,
+  "avg_monthly_charge_stayers": 61.26512369540008,
+  "median_tenure_churners": 10.0,
+  "median_tenure_stayers": 38.0
+}

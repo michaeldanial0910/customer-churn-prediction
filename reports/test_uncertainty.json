@@ -1,0 +1,27 @@
+{
+  "confusion_at_threshold": {
+    "tn": 634,
+    "fp": 401,
+    "fn": 43,
+    "tp": 331
+  },
+  "flagged_pct": 51.95173882185947,
+  "improved_at_threshold": {
+    "recall_ci95": [
+      0.8502641011817161,
+      0.9143764039827577
+    ],
+    "precision_ci95": [
+      0.41550926912422753,
+      0.48805158474512333
+    ]
+  },
+  "cost_baseline_minus_improved": {
+    "mean_diff": -2165.3,
+    "ci95": [
+      -4801.25,
+      251.24999999999886
+    ],
+    "share_b_cheaper": 0.038
+  }
+}
