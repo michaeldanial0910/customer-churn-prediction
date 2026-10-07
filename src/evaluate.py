@@ -162,3 +162,63 @@ def plot_calibration(y_true, y_prob, fname="calibration.png", n_bins=10):
 
 def report(y_true, y_pred, labels=None) -> str:
     return classification_report(y_true, y_pred, target_names=labels, digits=3)
+
+
+def gains_table(y_true, y_prob, fractions=(0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.75, 1.0)) -> pd.DataFrame:
+    """Cumulative gains / lift: if the team contacts the top-X% highest-risk customers,
+    what share of all churners does it reach, and how much better is that than random?"""
+    y = np.asarray(y_true)
+    order = np.argsort(-np.asarray(y_prob), kind="stable")
+    y_sorted, n, base = y[order], len(y), y.mean()
+    rows = []
+    for f in fractions:
+        k = max(int(round(f * n)), 1)
+        caught = int(y_sorted[:k].sum())
+        rows.append({"contacted_pct": f * 100, "customers": k, "churners_reached": caught,
+                     "share_of_all_churners": caught / y.sum(),
+                     "churn_rate_in_group": caught / k, "lift_vs_random": (caught / k) / base})
+    return pd.DataFrame(rows)
+
+
+def plot_gains(y_true, probs: dict, fname="gains_curve.png"):
+    """Cumulative gains curves (share of churners reached vs share of customers contacted)."""
+    y = np.asarray(y_true)
+    fig, ax = plt.subplots(figsize=(5.5, 4.5))
+    for name, p in probs.items():
+        ys = y[np.argsort(-np.asarray(p), kind="stable")]
+        ax.plot(np.arange(1, len(y) + 1) / len(y) * 100, np.cumsum(ys) / y.sum() * 100, label=name)
+    ax.plot([0, 100], [0, 100], "--", c="grey", label="Random contact")
+    ax.set_xlabel("% of customers contacted (highest risk first)")
+    ax.set_ylabel("% of all churners reached"); ax.set_title("Cumulative gains (test)")
+    ax.legend(loc="lower right", fontsize=8)
+    return _save(fig, fname)
+
+
+def bootstrap_metrics(y_true, y_prob, threshold: float, n_boot: int = 1000, seed: int = 42) -> dict:
+    """95% bootstrap intervals for precision and recall at a fixed threshold (descriptive uncertainty)."""
+    rng = np.random.default_rng(seed)
+    y, pred = np.asarray(y_true), np.asarray(y_prob) >= threshold
+    rec, prec = [], []
+    for _ in range(n_boot):
+        i = rng.integers(0, len(y), len(y))
+        tp = (pred[i] & (y[i] == 1)).sum()
+        rec.append(tp / (y[i] == 1).sum()); prec.append(tp / max(pred[i].sum(), 1))
+    return {"recall_ci95": [float(np.percentile(rec, 2.5)), float(np.percentile(rec, 97.5))],
+            "precision_ci95": [float(np.percentile(prec, 2.5)), float(np.percentile(prec, 97.5))]}
+
+
+def paired_cost_bootstrap(y_true, prob_a, thr_a, prob_b, thr_b, cost_fn, cost_fp,
+                          n_boot: int = 1000, seed: int = 42) -> dict:
+    """Paired bootstrap of cost(A) - cost(B) on the same resampled rows.
+    Positive = B is cheaper. If the interval contains 0 the two models are statistically indistinguishable."""
+    rng = np.random.default_rng(seed)
+    y = np.asarray(y_true)
+    pa, pb = np.asarray(prob_a) >= thr_a, np.asarray(prob_b) >= thr_b
+    diffs = []
+    for _ in range(n_boot):
+        i = rng.integers(0, len(y), len(y))
+        diffs.append(total_cost(y[i], pa[i].astype(int), cost_fn, cost_fp)
+                     - total_cost(y[i], pb[i].astype(int), cost_fn, cost_fp))
+    d = np.array(diffs)
+    return {"mean_diff": float(d.mean()), "ci95": [float(np.percentile(d, 2.5)), float(np.percentile(d, 97.5))],
+            "share_b_cheaper": float((d > 0).mean())}

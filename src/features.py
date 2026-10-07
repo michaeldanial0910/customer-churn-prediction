@@ -23,8 +23,12 @@ def add_features(X: pd.DataFrame) -> pd.DataFrame:
     return X
 
 
-def preprocessing_steps(scale: bool = False) -> list:
-    """Flat list of (name, transformer) steps -- flat so imblearn pipelines (SMOTE) can reuse them."""
+ENGINEERED = ["n_addons", "avg_monthly_paid", "charge_vs_history", "autopay", "is_new_customer"]
+
+
+def preprocessing_steps(scale: bool = False, engineer: bool = True) -> list:
+    """Flat list of (name, transformer) steps -- flat so imblearn pipelines (SMOTE) can reuse them.
+    engineer=False skips add_features (identity) -- used only for the feature ablation."""
     num_steps = [SimpleImputer(strategy="median")]
     if scale:
         num_steps.append(StandardScaler())
@@ -36,8 +40,9 @@ def preprocessing_steps(scale: bool = False) -> list:
         ],
         verbose_feature_names_out=False,
     ).set_output(transform="pandas")
-    return [("features", FunctionTransformer(add_features)), ("prep", pre)]
+    features = FunctionTransformer(add_features) if engineer else FunctionTransformer(None)  # None = identity
+    return [("features", features), ("prep", pre)]
 
 
-def build_preprocessor(scale: bool = False) -> Pipeline:
-    return Pipeline(preprocessing_steps(scale))
+def build_preprocessor(scale: bool = False, engineer: bool = True) -> Pipeline:
+    return Pipeline(preprocessing_steps(scale, engineer))

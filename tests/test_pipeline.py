@@ -52,3 +52,33 @@ def test_saved_model_scores_raw_rows_and_handles_unseen_category(df):
     assert p.shape == (50,) and ((p >= 0) & (p <= 1)).all()
     X.loc[X.index[0], "PaymentMethod"] = "Crypto"          # never seen in training
     assert np.isfinite(model.predict_proba(X)[0, 1])
+
+
+# ---------------------------------------------------------------- decision-logic tests (synthetic, no data needed)
+def test_cost_threshold_recovers_theoretical_break_even():
+    """For calibrated probabilities the optimal threshold is cost_fp / (cost_fn + cost_fp) = 50/350 ~ 0.143."""
+    from src.evaluate import cost_threshold
+    rng = np.random.default_rng(0)
+    p = rng.uniform(0, 1, 200_000)
+    y = (rng.uniform(0, 1, p.size) < p).astype(int)
+    thr, _ = cost_threshold(y, p, 300, 50, smooth=7)
+    assert 0.10 <= thr <= 0.19
+
+
+def test_gains_table_perfect_ranker_and_random_baseline():
+    from src.evaluate import gains_table
+    y = np.array([1] * 25 + [0] * 75)
+    g = gains_table(y, y.astype(float), fractions=(0.25, 1.0))
+    assert g.loc[0, "share_of_all_churners"] == 1.0          # top 25% contains every churner
+    assert g.loc[1, "share_of_all_churners"] == 1.0
+    assert abs(g.loc[1, "lift_vs_random"] - 1.0) < 1e-9     # contacting everybody = random
+
+
+@needs_data
+def test_engineered_features_can_be_switched_off(df):
+    from src.features import ENGINEERED, build_preprocessor
+    X = df.drop(columns=[TARGET])
+    with_fe = build_preprocessor(engineer=True).fit_transform(X)
+    without = build_preprocessor(engineer=False).fit_transform(X)
+    assert all(c in with_fe.columns for c in ENGINEERED)
+    assert not any(c in without.columns for c in ENGINEERED)

@@ -16,6 +16,7 @@ from lightgbm import LGBMClassifier
 from scipy.stats import loguniform, randint, uniform
 from sklearn.base import clone
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import (RandomizedSearchCV, StratifiedKFold, cross_val_predict,
                                      cross_validate)
 from xgboost import XGBClassifier
@@ -42,9 +43,9 @@ def load(name: str):
     return joblib.load(MODELS / f"{name}.joblib")
 
 
-def make_model(clf, scale=False, smote=False) -> ImbPipeline:
+def make_model(clf, scale=False, smote=False, engineer=True) -> ImbPipeline:
     """features -> impute/scale + one-hot -> (SMOTE, train folds only) -> classifier."""
-    steps = preprocessing_steps(scale)
+    steps = preprocessing_steps(scale, engineer)
     if smote:
         steps.append(("smote", SMOTE(random_state=SEED)))  # active only inside fit()
     return ImbPipeline(steps + [("clf", clf)])
@@ -116,6 +117,19 @@ def pooled_predictions(fitted_model, X_tr, y_tr, X_val, y_val):
     p_tr = cross_val_predict(clone(fitted_model), X_tr, y_tr, cv=CV, method="predict_proba", n_jobs=5)[:, 1]
     p_val = fitted_model.predict_proba(X_val)[:, 1]
     return np.concatenate([np.asarray(y_tr), np.asarray(y_val)]), np.concatenate([p_tr, p_val])
+
+
+def feature_ablation(best_params: dict, X, y) -> pd.DataFrame:
+    """Do the 5 engineered features earn their place? Same tuned XGBoost, same CV folds, with vs without."""
+    rows = []
+    for label, eng in [("with engineered features", True), ("without engineered features", False)]:
+        m = make_model(XGBClassifier(random_state=SEED, n_jobs=1, eval_metric="logloss"), engineer=eng)
+        m.set_params(**best_params)          # raw search.best_params_ (keys already 'clf__...')
+        r = cross_validate(m, X, y, cv=CV, scoring=["average_precision", "roc_auc"], n_jobs=5)
+        rows.append({"variant": label, "cv_pr_auc": r["test_average_precision"].mean(),
+                     "cv_pr_auc_std": r["test_average_precision"].std(),
+                     "cv_roc_auc": r["test_roc_auc"].mean()})
+    return pd.DataFrame(rows)
 
 
 def cost_sensitivity(y, p) -> pd.DataFrame:
@@ -192,12 +206,28 @@ def main():
     print(results.round(3).to_string(index=False))
     print("  business cost on test:", business)
 
+    # stakeholder views + uncertainty (report-only: nothing here feeds back into any choice)
+    gains = ev.gains_table(y_te, p_te["Improved"])
+    tn, fp_, fn_, tp = (int(v) for v in confusion_matrix(y_te, pred_opt).ravel())
+    uncertainty = {
+        "confusion_at_threshold": {"tn": tn, "fp": fp_, "fn": fn_, "tp": tp},
+        "flagged_pct": float(pred_opt.mean() * 100),
+        "improved_at_threshold": ev.bootstrap_metrics(y_te, p_te["Improved"], thr),
+        "cost_baseline_minus_improved": ev.paired_cost_bootstrap(
+            y_te, p_te["Baseline"], thr_base, p_te["Improved"], thr, COST_FN, COST_FP),
+    }
+    print("  gains:\n", gains.round(3).to_string(index=False))
+    print("  uncertainty:", uncertainty)
+    ablation = feature_ablation(search.best_params_, X_tr, y_tr)
+    print("  feature ablation (CV on train):\n", ablation.round(4).to_string(index=False))
+
     # figures
     ev.plot_confusion(y_te, pred_opt, labels=["Stay", "Churn"], fname="confusion_matrix.png")
     ev.plot_pr_curves(y_te, p_te, fname="pr_curve.png")
     ev.plot_threshold_sweep(sweep, thr, fname="threshold_sweep.png")
     ev.plot_cost_curve(cost_df, thr, fname="cost_curve.png")
     ev.plot_calibration(y_te, p_te["Improved"], fname="calibration.png")
+    ev.plot_gains(y_te, p_te, fname="gains_curve.png")
 
     # persist
     save(improved, "churn_model")
@@ -218,6 +248,9 @@ def main():
     sens.to_csv(REPORTS / "cost_sensitivity.csv", index=False)
     results.to_csv(REPORTS / "test_results.csv", index=False)
     (REPORTS / "business_cost_test.json").write_text(json.dumps(business, indent=2))
+    gains.to_csv(REPORTS / "gains_test.csv", index=False)
+    (REPORTS / "test_uncertainty.json").write_text(json.dumps(uncertainty, indent=2))
+    ablation.to_csv(REPORTS / "feature_ablation.csv", index=False)
     print("\nsaved model, metadata, tables and figures.")
 
 

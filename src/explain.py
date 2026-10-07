@@ -13,6 +13,7 @@ import shap
 from src import evaluate as ev
 from src.config import RAW_FILE, TARGET
 from src.data import PROCESSED, clean, load_raw, split
+from src.features import ENGINEERED
 from src.train import MODELS, REPORTS, load
 
 warnings.filterwarnings("ignore")
@@ -81,12 +82,79 @@ def fn_vs_tp_profile(d: pd.DataFrame) -> pd.DataFrame:
                          "caught (TP)": d.loc[d.outcome == "TP", cols].mean()})
 
 
+def grouped_importance(model, X: pd.DataFrame, save_fig=True) -> pd.DataFrame:
+    """Importance per ORIGINAL feature: one-hot columns are summed back to their source column *per customer*
+    (SHAP is additive, so this is exact), then averaged in absolute value. Flags engineered features."""
+    Z, sv = shap_values(model, X)
+    vals = pd.DataFrame(sv.values, columns=Z.columns)
+    raw = sorted(X.columns, key=len, reverse=True)
+
+    def source(col):
+        if col in ENGINEERED or col in X.columns:
+            return col
+        return next((c for c in raw if col.startswith(c + "_")), col)
+
+    groups = {}
+    for col in vals.columns:
+        groups.setdefault(source(col), []).append(col)
+    g = pd.Series({k: vals[v].sum(axis=1).abs().mean() for k, v in groups.items()}).sort_values(ascending=False)
+    out = pd.DataFrame({"feature": g.index, "mean_abs_shap": g.values,
+                        "type": ["engineered" if f in ENGINEERED else "original" for f in g.index]})
+    if save_fig:
+        top = out.head(15).iloc[::-1]
+        fig, ax = plt.subplots(figsize=(7, 5))
+        ax.barh(top["feature"], top["mean_abs_shap"],
+                color=["#C44E52" if t == "engineered" else "#4C72B0" for t in top["type"]])
+        ax.set_xlabel("Mean |SHAP| (log-odds), summed per original feature")
+        ax.set_title("Feature importance by original feature (red = engineered)")
+        fig.tight_layout(); fig.savefig(ev.FIG_DIR / "shap_grouped.png", dpi=150); plt.close(fig)
+        out.to_csv(REPORTS / "feature_importance_grouped.csv", index=False)
+    return out
+
+
+def churn_by_segment(df: pd.DataFrame) -> pd.DataFrame:
+    """Descriptive churn rate per segment on ALL customers (no modelling decision depends on this)."""
+    d = df.copy()
+    d["tenure_band"] = pd.cut(d["tenure"], [-1, 12, 24, 48, 100], labels=["0-12m", "13-24m", "25-48m", "49m+"])
+    rows = []
+    for col in ["Contract", "InternetService", "PaymentMethod", "tenure_band", "TechSupport",
+                "OnlineSecurity", "PaperlessBilling", "SeniorCitizen"]:
+        for val, g in d.groupby(col, observed=True):
+            rows.append({"segment": f"{col}={val}", "customers": len(g),
+                         "share_of_customers": len(g) / len(d), "churn_rate": g[TARGET].mean(),
+                         "share_of_all_churners": g[TARGET].sum() / d[TARGET].sum()})
+    return pd.DataFrame(rows)
+
+
+def revenue_context(df: pd.DataFrame) -> dict:
+    """How much recurring revenue does churn represent? (monthly charges of churned customers)"""
+    ch = df[df[TARGET] == 1]
+    return {"customers": int(len(df)), "churners": int(len(ch)),
+            "churn_rate": float(df[TARGET].mean()),
+            "monthly_revenue_all": float(df["MonthlyCharges"].sum()),
+            "monthly_revenue_of_churners": float(ch["MonthlyCharges"].sum()),
+            "share_of_monthly_revenue_churned": float(ch["MonthlyCharges"].sum() / df["MonthlyCharges"].sum()),
+            "avg_monthly_charge_churners": float(ch["MonthlyCharges"].mean()),
+            "avg_monthly_charge_stayers": float(df.loc[df[TARGET] == 0, "MonthlyCharges"].mean()),
+            "median_tenure_churners": float(ch["tenure"].median()),
+            "median_tenure_stayers": float(df.loc[df[TARGET] == 0, "tenure"].median())}
+
+
 def main():
     ev.FIG_DIR.mkdir(parents=True, exist_ok=True)
     model = load("churn_model")
     thr = json.loads((MODELS / "meta.json").read_text())["threshold"]
-    _, X_val, _, _, y_val, _ = split(clean(load_raw(RAW_FILE)))   # same deterministic split as train
+    df_all = clean(load_raw(RAW_FILE))
+    _, X_val, _, _, y_val, _ = split(df_all)   # same deterministic split as train
     val = X_val.assign(**{TARGET: y_val})
+
+    churn_by_segment(df_all).to_csv(REPORTS / "churn_by_segment.csv", index=False)
+    rev = revenue_context(df_all)
+    (REPORTS / "revenue_context.json").write_text(json.dumps(rev, indent=2))
+    print("Revenue context:", {k: round(v, 3) for k, v in rev.items()})
+
+    grp = grouped_importance(model, X_val)
+    print("\nGrouped importance (original features):\n", grp.head(12).round(3).to_string(index=False))
 
     imp = global_importance(model, X_val)
     print("Top 10 features by mean |SHAP|:\n", imp.head(10).round(3).to_string())
