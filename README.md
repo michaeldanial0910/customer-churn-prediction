@@ -1,10 +1,10 @@
 # Customer Churn Prediction Pipeline
 
 > UneeQ Interns · Machine Learning Track · October 2026
-> **Author:** Michael Danial · **Demo video:** [YouTube/LinkedIn link](#)
+> **Author:** Michael Danial · **Demo video:** [`demo/churn_demo.mp4`](demo/churn_demo.mp4) (30 s, the Streamlit app below)
 > **Audience:** written for telecom retention stakeholders first (sections 1-5), with the full technical detail for reviewers after (sections 6-9).
 
-**Contents:** [Executive summary](#executive-summary) · [1 The cost of churn](#1-the-cost-of-churn) · [2 Who churns and why](#2-who-churns-and-why-business-findings) · [3 Model performance](#3-model-performance-final-numbers) · [4 Using the model](#4-using-the-model-in-practice) · [5 Feature importance](#5-feature-importance) · [6 Why these models](#6-why-these-models) · [7 Technical approach](#7-technical-approach) · [8 Limitations](#8-limitations-and-responsible-use) · [9 Reproduce](#9-reproduce-it)
+**Contents:** [Executive summary](#executive-summary) · [1 The cost of churn](#1-the-cost-of-churn) · [2 Who churns and why](#2-who-churns-and-why-business-findings) · [3 Model performance](#3-model-performance-final-numbers) · [4 Using the model](#4-using-the-model-in-practice) · [5 Feature importance](#5-feature-importance) · [6 Why these models](#6-why-these-models) · [7 Technical approach](#7-technical-approach) · [8 Limitations](#8-limitations-and-responsible-use) · [9 Reproduce](#9-reproduce-it) · [10 The app](#10-the-app)
 
 ---
 
@@ -12,7 +12,7 @@
 
 **The problem.** A telecom loses customers every month and cannot afford to offer every customer a retention deal. In this dataset (7,043 customers) **26.5% have churned, taking 30.5% of monthly recurring revenue with them**, because the customers who leave pay more than the ones who stay.
 
-**What we built.** A churn-risk model that ranks customers by how likely they are to leave, so the retention team can contact the right customers first. It is wrapped in a reproducible pipeline, explained with SHAP, and exposed in a small Streamlit app that scores a customer and shows *why*.
+**What we built.** A churn-risk model that ranks customers by how likely they are to leave, so the retention team can contact the right customers first. It is wrapped in a reproducible pipeline, explained with SHAP, and exposed in a five-page Streamlit app a retention team could use: score a customer and see why, build this month's contact list, set the decision threshold, compare models, and explore who leaves (section 10).
 
 **Final numbers (held-out test set, 1,409 customers the model never saw):**
 
@@ -285,7 +285,7 @@ raw CSV ─► clean() ─► stratified split 60/20/20 (train 4,225 / val 1,409
 - **Test-set reuse during development.** The code evaluates the test set once per run, but the pipeline was re-run during development (different library versions, then a change of threshold method after the validation-only choice proved unstable). No choice was made to improve test numbers, yet strictly the test set was seen more than once, so its figures are not a pristine one-shot estimate.
 - **Single snapshot, no timestamps.** No temporal validation or drift monitoring is possible; a production deployment needs both.
 - **Wide intervals.** With 1,409 test customers recall is known to about ±3 points.
-- **App approximation.** The demo estimates `TotalCharges` as tenure × monthly charge because it has no billing history.
+- **App approximation.** For a what-if profile the app estimates `TotalCharges` as tenure × monthly charge because it has no billing history (real held-out customers use their actual value).
 - **Protected attributes.** The model receives `gender` and `SeniorCitizen`. Their importance is small (gender ranks near the bottom), but a production system should review whether to remove them and should monitor outcomes across customer groups, particularly because senior citizens churn at 42% and could be over-targeted.
 - **Associations, not causes.** Section 2 recommendations should be validated with controlled experiments before large-scale roll-out.
 
@@ -303,8 +303,8 @@ uv pip install -r requirements.txt   # direct dependencies pinned to the version
 # put the dataset in data/raw/ (see section 7), then:
 python -m src.train        # CV comparison, tuning, threshold, test evaluation -> models/, reports/
 python -m src.explain      # SHAP, grouped importance, segment and revenue tables, error analysis
-pytest -q                  # 7 tests
-streamlit run app.py       # interactive demo
+pytest -q                  # 14 tests (pipeline, decision logic, app smoke tests)
+streamlit run app.py       # the app, http://localhost:8501
 ```
 
 Notebooks (`notebooks/`, select the `.venv` kernel), committed with outputs so the plots render on GitHub: `01_eda` → `02_modeling` → `03_explainability_errors` (03 needs `python -m src.train` first).
@@ -313,8 +313,28 @@ Notebooks (`notebooks/`, select the `.venv` kernel), committed with outputs so t
 ├── data/            # raw/ and processed/ (gitignored)
 ├── notebooks/       # 01_eda, 02_modeling, 03_explainability_errors
 ├── src/             # config, data, features, train, evaluate, explain
-├── tests/           # pipeline and decision-logic tests
+├── tests/           # pipeline, decision-logic and app smoke tests
+├── app_lib/         # app design system, data loading, scoring and plain-language reasons
+├── app_pages/       # one file per app page
+├── demo/            # churn_demo.mp4 + the scripts that recorded (record.py) and edited (build.py) it
 ├── models/          # saved model + meta.json (gitignored)
 ├── reports/         # result tables + figures
-└── app.py           # Streamlit demo
+└── app.py           # Streamlit entry point (navigation)
 ```
+
+---
+
+## 10. The app
+
+`streamlit run app.py` opens a five-page app at http://localhost:8501. It needs the dataset in `data/raw/` and a trained model (`python -m src.train`); the report pages read the tables in `reports/`. A 30-second walkthrough is in [`demo/churn_demo.mp4`](demo/churn_demo.mp4).
+
+| Page | What it is for |
+|---|---|
+| **Score a customer** | Enter a profile (or start from an example, or load a real held-out customer) and get the churn probability, the decision tier (no action / retention offer above 0.15 / priority call above 0.50), the main reasons in plain language (grouped SHAP), and a suggested offer to test. For real customers it shows, in hindsight, whether they actually left. |
+| **Contact list** | The 1,409 held-out customers ranked by risk. Set how many the team can contact; a hindsight toggle shows how many real leavers the list reaches, the cost, and the cumulative-gains curve. |
+| **Thresholds** | Move the decision line and set your own cost of a missed leaver and of an unneeded offer; see share contacted, leavers reached, precision and total cost on the test customers, plus the cost-sensitivity table used to pick 0.15. |
+| **Results** | Cross-validated comparison of all models and imbalance strategies, business cost of each strategy, the paired-bootstrap check that XGBoost and logistic regression are tied, and the test metrics. |
+| **Why customers leave** | Revenue at risk, churn rate by segment, grouped feature importance (engineered features marked) and the "quiet leavers" the model misses. |
+
+The tiers and the 0.50 "call first" line are an ordering aid inside the contact list, not a second optimised threshold. Suggested offers come from the risk-raising drivers and are ideas to A/B test, not decisions. The demo video was recorded from the real running app (`demo/record.py` drives it with Playwright on a virtual display, `demo/build.py` cuts the 30-second edit with ffmpeg).
+
