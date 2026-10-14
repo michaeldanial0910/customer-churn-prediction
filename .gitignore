@@ -17,3 +17,9 @@ __pycache__/
 .ipynb_checkpoints/
 .DS_Store
 .vscode/
+
+# Demo build intermediates (the final video demo/churn_demo.mp4 is committed)
+demo/raw.mp4
+demo/*.png
+demo/marks.json
+.pytest_cache/
