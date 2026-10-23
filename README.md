@@ -4,6 +4,11 @@
 > **Author:** Michael Danial · **Demo video:** [`demo/churn_demo.mp4`](demo/churn_demo.mp4) (30 s, the Streamlit app below)
 > **Audience:** written for telecom retention stakeholders first (sections 1-5), with the full technical detail for reviewers after (sections 6-9).
 
+<p align="center">
+  <img src="docs/screenshots/app_score_customer.png" alt="Score a customer page: churn probability, decision tier and plain-language reasons" width="49%">
+  <img src="docs/screenshots/app_thresholds.png" alt="Thresholds page: move the decision line and see cost and leavers reached" width="49%">
+</p>
+
 **Contents:** [Executive summary](#executive-summary) · [1 The cost of churn](#1-the-cost-of-churn) · [2 Who churns and why](#2-who-churns-and-why-business-findings) · [3 Model performance](#3-model-performance-final-numbers) · [4 Using the model](#4-using-the-model-in-practice) · [5 Feature importance](#5-feature-importance) · [6 Why these models](#6-why-these-models) · [7 Technical approach](#7-technical-approach) · [8 Limitations](#8-limitations-and-responsible-use) · [9 Reproduce](#9-reproduce-it) · [10 The app](#10-the-app)
 
 ---
@@ -140,6 +145,8 @@ Held-out **test set: 1,409 customers** (20% of the data, stratified, never used 
 - **The default 0.5 threshold is worse than contacting everyone.** Picking the decision threshold matters more than picking the algorithm.
 - The logistic-regression baseline is $2,250 *cheaper* than XGBoost here, but a paired bootstrap (95% interval about −$4.8k to +$0.3k) shows the two are **statistically indistinguishable**.
 
+![Total business cost by decision threshold, out-of-fold on training data; the dashed line is the chosen 0.15](reports/figures/cost_curve.png)
+
 ### How well does the ranking concentrate churners? (`reports/gains_test.csv`, `reports/figures/gains_curve.png`)
 
 | Contact the top... | Churners reached | Churn rate among those contacted | Lift vs random |
@@ -149,6 +156,8 @@ Held-out **test set: 1,409 customers** (20% of the data, stratified, never used 
 | 30% | 67.9% | 60.0% | 2.3x |
 | 40% | 79.1% | 52.5% | 2.0x |
 | 52% (cost-optimal threshold) | 88.5% | 45.2% | 1.7x |
+
+![Cumulative gains on the test set: share of churners reached vs share of customers contacted](reports/figures/gains_curve.png)
 
 ---
 
@@ -199,6 +208,8 @@ Importance below is **SHAP** (mean absolute contribution to the model's churn lo
 | 12 | **charge_vs_history** | 0.094 | **engineered** | see below |
 | 13-15 | OnlineBackup, StreamingTV, Dependents | 0.069 / 0.068 / 0.056 | original | |
 | 16+ | SeniorCitizen, StreamingMovies, **is_new_customer**, PhoneService, gender, **n_addons**, **autopay**, Partner, DeviceProtection | ≤ 0.046 | mixed | small |
+
+![Grouped SHAP importance per original feature; engineered features in red](reports/figures/shap_grouped.png)
 
 **Engineered features** (`src/features.py`), computed inside the model pipeline so training and the app share one code path:
 
