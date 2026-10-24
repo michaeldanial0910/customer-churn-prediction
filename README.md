@@ -1,7 +1,7 @@
 # Customer Churn Prediction Pipeline
 
 > UneeQ Interns · Machine Learning Track · October 2026
-> **Author:** Michael Danial · **Demo video:** [`demo/churn_demo.mp4`](demo/churn_demo.mp4) (30 s, the Streamlit app below)
+> **Author:** Michael Danial · **Demo video:** [watch on YouTube](https://youtu.be/77iZDSuuZhI) · file: [`demo/churn_demo.mp4`](demo/churn_demo.mp4) (30 s, the Streamlit app below)
 > **Audience:** written for telecom retention stakeholders first (sections 1-5), with the full technical detail for reviewers after (sections 6-9).
 
 <p align="center">
